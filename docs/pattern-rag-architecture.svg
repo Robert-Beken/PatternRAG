@@ -1,0 +1,126 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 600">
+  <!-- Background -->
+  <rect width="900" height="600" fill="#f8f9fa"/>
+  
+  <!-- Title -->
+  <text x="450" y="40" font-family="Arial" font-size="24" text-anchor="middle" font-weight="bold">Pattern-Finding RAG System Architecture</text>
+  
+  <!-- Document Processing Pipeline (Left) -->
+  <rect x="40" y="80" width="200" height="440" fill="#e6f2ff" stroke="#0066cc" stroke-width="2" rx="10"/>
+  <text x="140" y="100" font-family="Arial" font-size="16" text-anchor="middle" font-weight="bold">Document Processing</text>
+  
+  <!-- Document Processing Components -->
+  <rect x="60" y="120" width="160" height="60" fill="#ffffff" stroke="#0066cc" stroke-width="1" rx="5"/>
+  <text x="140" y="155" font-family="Arial" font-size="12" text-anchor="middle">Document Loader</text>
+  
+  <rect x="60" y="190" width="160" height="60" fill="#ffffff" stroke="#0066cc" stroke-width="1" rx="5"/>
+  <text x="140" y="225" font-family="Arial" font-size="12" text-anchor="middle">Text Splitter</text>
+  
+  <rect x="60" y="260" width="160" height="60" fill="#ffffff" stroke="#0066cc" stroke-width="1" rx="5"/>
+  <text x="140" y="295" font-family="Arial" font-size="12" text-anchor="middle">Metadata Extraction</text>
+  
+  <rect x="60" y="330" width="160" height="60" fill="#ffffff" stroke="#0066cc" stroke-width="1" rx="5"/>
+  <text x="140" y="365" font-family="Arial" font-size="12" text-anchor="middle">Entity Extraction</text>
+  
+  <rect x="60" y="400" width="160" height="60" fill="#ffffff" stroke="#0066cc" stroke-width="1" rx="5"/>
+  <text x="140" y="435" font-family="Arial" font-size="12" text-anchor="middle">Embedding Generation</text>
+  
+  <!-- Storage Layer (Middle) -->
+  <rect x="300" y="80" width="300" height="200" fill="#e8f4ea" stroke="#2e7d32" stroke-width="2" rx="10"/>
+  <text x="450" y="100" font-family="Arial" font-size="16" text-anchor="middle" font-weight="bold">Storage Layer</text>
+  
+  <!-- Storage Components -->
+  <rect x="320" y="120" width="120" height="140" fill="#ffffff" stroke="#2e7d32" stroke-width="1" rx="5"/>
+  <text x="380" y="140" font-family="Arial" font-size="12" text-anchor="middle">Vector DB</text>
+  <text x="380" y="160" font-family="Arial" font-size="10" text-anchor="middle">(ChromaDB)</text>
+  <text x="380" y="180" font-family="Arial" font-size="10" text-anchor="middle">- Document vectors</text>
+  <text x="380" y="200" font-family="Arial" font-size="10" text-anchor="middle">- Semantic search</text>
+  
+  <rect x="460" y="120" width="120" height="140" fill="#ffffff" stroke="#2e7d32" stroke-width="1" rx="5"/>
+  <text x="520" y="140" font-family="Arial" font-size="12" text-anchor="middle">Metadata DB</text>
+  <text x="520" y="160" font-family="Arial" font-size="10" text-anchor="middle">(SQLite)</text>
+  <text x="520" y="180" font-family="Arial" font-size="10" text-anchor="middle">- Document metadata</text>
+  <text x="520" y="200" font-family="Arial" font-size="10" text-anchor="middle">- Entities</text>
+  <text x="520" y="220" font-family="Arial" font-size="10" text-anchor="middle">- Relationships</text>
+  
+  <!-- Knowledge Graph (Middle-Bottom) -->
+  <rect x="300" y="290" width="300" height="150" fill="#f9f0f6" stroke="#c2185b" stroke-width="2" rx="10"/>
+  <text x="450" y="310" font-family="Arial" font-size="16" text-anchor="middle" font-weight="bold">Knowledge Graph</text>
+  
+  <!-- Graph Visual -->
+  <circle cx="350" cy="350" r="10" fill="#c2185b"/>
+  <circle cx="390" cy="380" r="10" fill="#c2185b"/>
+  <circle cx="430" cy="340" r="10" fill="#c2185b"/>
+  <circle cx="470" cy="390" r="10" fill="#c2185b"/>
+  <circle cx="510" cy="350" r="10" fill="#c2185b"/>
+  <circle cx="550" cy="370" r="10" fill="#c2185b"/>
+  
+  <line x1="350" y1="350" x2="390" y2="380" stroke="#c2185b" stroke-width="2"/>
+  <line x1="350" y1="350" x2="430" y2="340" stroke="#c2185b" stroke-width="2"/>
+  <line x1="390" y1="380" x2="470" y2="390" stroke="#c2185b" stroke-width="2"/>
+  <line x1="430" y1="340" x2="510" y2="350" stroke="#c2185b" stroke-width="2"/>
+  <line x1="470" y1="390" x2="510" y2="350" stroke="#c2185b" stroke-width="2"/>
+  <line x1="510" y1="350" x2="550" y2="370" stroke="#c2185b" stroke-width="2"/>
+  
+  <text x="450" y="420" font-family="Arial" font-size="10" text-anchor="middle">- Entity relationships</text>
+  <text x="450" y="435" font-family="Arial" font-size="10" text-anchor="middle">- Connection weights</text>
+  
+  <!-- FastAPI Service (Middle-Bottom) -->
+  <rect x="300" y="450" width="300" height="70" fill="#fff8e1" stroke="#ff8f00" stroke-width="2" rx="10"/>
+  <text x="450" y="470" font-family="Arial" font-size="16" text-anchor="middle" font-weight="bold">FastAPI Service</text>
+  <text x="450" y="490" font-family="Arial" font-size="10" text-anchor="middle">- REST API Endpoints</text>
+  <text x="450" y="505" font-family="Arial" font-size="10" text-anchor="middle">- Chat Completions Interface</text>
+  
+  <!-- Query Processing (Right) -->
+  <rect x="660" y="80" width="200" height="440" fill="#f3e5f5" stroke="#6a1b9a" stroke-width="2" rx="10"/>
+  <text x="760" y="100" font-family="Arial" font-size="16" text-anchor="middle" font-weight="bold">Pattern-Finding RAG</text>
+  
+  <!-- Query Processing Steps -->
+  <rect x="680" y="120" width="160" height="50" fill="#ffffff" stroke="#6a1b9a" stroke-width="1" rx="5"/>
+  <text x="760" y="150" font-family="Arial" font-size="12" text-anchor="middle">Query Expansion</text>
+  
+  <rect x="680" y="180" width="160" height="50" fill="#ffffff" stroke="#6a1b9a" stroke-width="1" rx="5"/>
+  <text x="760" y="210" font-family="Arial" font-size="12" text-anchor="middle">Entity Extraction</text>
+  
+  <rect x="680" y="240" width="160" height="50" fill="#ffffff" stroke="#6a1b9a" stroke-width="1" rx="5"/>
+  <text x="760" y="270" font-family="Arial" font-size="12" text-anchor="middle">Graph-Based Retrieval</text>
+  
+  <rect x="680" y="300" width="160" height="50" fill="#ffffff" stroke="#6a1b9a" stroke-width="1" rx="5"/>
+  <text x="760" y="330" font-family="Arial" font-size="12" text-anchor="middle">Vector-Based Retrieval</text>
+  
+  <rect x="680" y="360" width="160" height="50" fill="#ffffff" stroke="#6a1b9a" stroke-width="1" rx="5"/>
+  <text x="760" y="390" font-family="Arial" font-size="12" text-anchor="middle">Pattern Analysis</text>
+  
+  <rect x="680" y="420" width="160" height="50" fill="#ffffff" stroke="#6a1b9a" stroke-width="1" rx="5"/>
+  <text x="760" y="450" font-family="Arial" font-size="12" text-anchor="middle">Response Generation</text>
+  
+  <!-- External LLM (Bottom) -->
+  <rect x="400" y="530" width="100" height="50" fill="#ffe0b2" stroke="#e65100" stroke-width="2" rx="10"/>
+  <text x="450" y="555" font-family="Arial" font-size="14" text-anchor="middle" font-weight="bold">Ollama</text>
+  <text x="450" y="570" font-family="Arial" font-size="10" text-anchor="middle">(LLM Service)</text>
+  
+  <!-- OpenWebUI (Bottom) -->
+  <rect x="550" y="530" width="100" height="50" fill="#bbdefb" stroke="#0d47a1" stroke-width="2" rx="10"/>
+  <text x="600" y="555" font-family="Arial" font-size="14" text-anchor="middle" font-weight="bold">OpenWebUI</text>
+  <text x="600" y="570" font-family="Arial" font-size="10" text-anchor="middle">(User Interface)</text>
+  
+  <!-- Connection Lines -->
+  <!-- Doc Processing to Storage -->
+  <line x1="240" y1="150" x2="300" y2="150" stroke="#666666" stroke-width="1" stroke-dasharray="5,5"/>
+  <line x1="240" y1="290" x2="300" y2="290" stroke="#666666" stroke-width="1" stroke-dasharray="5,5"/>
+  <line x1="240" y1="365" x2="300" y2="365" stroke="#666666" stroke-width="1" stroke-dasharray="5,5"/>
+  
+  <!-- Storage to Service -->
+  <line x1="450" y1="280" x2="450" y2="290" stroke="#666666" stroke-width="1"/>
+  <line x1="450" y1="440" x2="450" y2="450" stroke="#666666" stroke-width="1"/>
+  
+  <!-- Service to Query Processing -->
+  <line x1="600" y1="480" x2="660" y2="480" stroke="#666666" stroke-width="1"/>
+  <line x1="600" y1="150" x2="660" y2="150" stroke="#666666" stroke-width="1" stroke-dasharray="5,5"/>
+  <line x1="600" y1="270" x2="660" y2="270" stroke="#666666" stroke-width="1" stroke-dasharray="5,5"/>
+  <line x1="600" y1="330" x2="660" y2="330" stroke="#666666" stroke-width="1" stroke-dasharray="5,5"/>
+  
+  <!-- Service to External Components -->
+  <line x1="450" y1="520" x2="450" y2="530" stroke="#666666" stroke-width="2"/>
+  <line x1="500" y1="485" x2="600" y2="530" stroke="#666666" stroke-width="2"/>
+</svg>

@@ -1,0 +1,41 @@
+# PatternRAG Configuration
+
+# Base directory for all data
+base_dir: "./data"
+
+# Source directory for documents
+source_directory: "./documents"
+
+# LLM settings
+model: "llama3"  # Default model to use
+llm_api_url: "http://localhost:11434"  # Ollama API or compatible service
+
+# Embedding settings
+embeddings_model_name: "all-MiniLM-L6-v2"  # HuggingFace model for embeddings
+
+# Processing settings
+max_workers: 16  # Number of worker threads for concurrent operations
+search_depth: 2  # Depth of search for patterns
+
+# Chunking settings
+chunk_size: 1000  # Character size for paragraph chunks
+chunk_overlap: 200  # Overlap between paragraph chunks
+sentence_chunk_size: 250  # Character size for sentence chunks
+sentence_chunk_overlap: 25  # Overlap between sentence chunks
+
+# Batch settings
+batch_size: 500  # Batch size for vector db operations
+
+# Pattern-finding settings
+# These patterns guide the system in finding connections across documents
+custom_patterns:
+  - "similarities between distinct domains of knowledge"
+  - "recurring themes across different time periods"
+  - "mathematical or structural patterns in complex systems"
+  - "symbolic parallels across different disciplines"
+  - "causal relationships between seemingly unrelated events"
+  - "common narratives appearing in multiple contexts"
+  - "shared principles across diverse scientific disciplines"
+  - "interconnections between technological developments and social changes"
+  - "ecological relationships mirrored in other systems"
+  - "information flow patterns across different networks"
