@@ -175,15 +175,20 @@ class PatternIngest:
         conn.close()
         print("Database schema initialized or verified")
     
-    def init_knowledge_graph(self):
-        """Initialize or load existing knowledge graph."""
-        if os.path.exists(self.graph_file):
+   def init_knowledge_graph(self):
+    """Initialize or load existing knowledge graph with error handling."""
+    if os.path.exists(self.graph_file) and os.path.getsize(self.graph_file) > 0:
+        try:
             with open(self.graph_file, 'rb') as f:
                 graph = pickle.load(f)
                 print(f"Loaded existing knowledge graph with {graph.number_of_nodes()} nodes and {graph.number_of_edges()} edges")
                 return graph
-        print("Creating new knowledge graph")
-        return nx.Graph()
+        except (EOFError, pickle.UnpicklingError) as e:
+            print(f"Error loading knowledge graph: {str(e)}")
+            print("Creating new knowledge graph")
+            return nx.Graph()
+    print("Creating new knowledge graph")
+    return nx.Graph()
     
     def load_single_document(self, file_path: str) -> List[Document]:
         """
@@ -318,204 +323,236 @@ class PatternIngest:
             print(f"Error extracting graph elements: {str(e)}")
             return [], []
     
-    def process_documents(self, ignored_files: List[str] = [], force_reprocess: bool = False) -> List[Document]:
-        """
-        Process documents from the source directory.
+  def process_documents(self, ignored_files: List[str] = [], force_reprocess: bool = False) -> List[Document]:
+    """
+    Process documents from the source directory.
+    
+    Args:
+        ignored_files (List[str]): List of files to ignore
+        force_reprocess (bool): Whether to force reprocessing of all files
         
-        Args:
-            ignored_files (List[str]): List of files to ignore
-            force_reprocess (bool): Whether to force reprocessing of all files
-            
-        Returns:
-            List[Document]: List of processed document chunks
-        """
-        conn = sqlite3.connect(self.metadata_db)
-        cursor = conn.cursor()
-        
-        # Find all files in source directory that match supported extensions
-        all_files = []
-        for ext in self.LOADER_MAPPING:
-            all_files.extend(glob.glob(os.path.join(self.source_directory, f"**/*{ext}"), recursive=True))
-        
-        # If force_reprocess is False, filter out already processed files
-        if not force_reprocess:
-            cursor.execute("SELECT path FROM documents WHERE chunk_count IS NOT NULL")
-            processed_files = [row[0] for row in cursor.fetchall()]
-            filtered_files = [f for f in all_files if f not in ignored_files and f not in processed_files]
-        else:
-            filtered_files = [f for f in all_files if f not in ignored_files]
-        
-        if not filtered_files:
-            print("No new documents to process")
-            conn.close()
-            return []
-        
-        print(f"Found {len(filtered_files)} documents to process")
-        
-        # Process files
-        all_docs = []
-        total_chunks = 0  # Track total chunks processed
-        
-        with tqdm(total=len(filtered_files), desc="Processing documents") as pbar:
-            for file_path in filtered_files:
-                try:
-                    # Load document
-                    docs = self.load_single_document(file_path)
-                    if not docs:
-                        pbar.update(1)
-                        continue
-                    
-                    # Combine all text from document for metadata extraction
-                    full_text = " ".join([doc.page_content for doc in docs])
-                    
-                    # Extract metadata
-                    metadata = self.extract_document_metadata(full_text, file_path)
-                    
-                    # Insert document into database
-                    cursor.execute(
-                        "INSERT INTO documents (path, title, author, file_type, size, indexed_date, themes) VALUES (?, ?, ?, ?, ?, ?, ?)",
-                        (file_path, metadata["title"], metadata["author"], metadata["file_type"], 
-                         metadata["size"], datetime.now(), metadata["themes"])
-                    )
-                    doc_id = cursor.lastrowid
-                    
-                    # Split into chunks with hierarchical approach
-                    paragraph_splitter = RecursiveCharacterTextSplitter(
-                        chunk_size=self.config["chunk_size"],
-                        chunk_overlap=self.config["chunk_overlap"],
-                        separators=["\n\n", "\n", ". ", "! ", "? ", ";", ",", " ", ""]
-                    )
-                    sentence_splitter = RecursiveCharacterTextSplitter(
-                        chunk_size=self.config["sentence_chunk_size"],
-                        chunk_overlap=self.config["sentence_chunk_overlap"],
-                        separators=[". ", "! ", "? ", ";", "\n", ",", " ", ""]
-                    )
-                    
-                    processed_chunks = []
-                    
-                    # First split into paragraphs
-                    for i, doc in enumerate(docs):
-                        # Update base metadata
-                        base_metadata = {
-                            "source": file_path,
-                            "doc_id": str(doc_id),  # Convert to string for Chroma compatibility
-                            "title": metadata["title"],
-                            "author": metadata["author"],
-                            "chunk_type": "paragraph"
-                        }
-                        
-                        # Split into paragraphs
-                        paragraphs = paragraph_splitter.split_text(doc.page_content)
-                        
-                        for j, para in enumerate(paragraphs):
-                            # Find position in original text
-                            start_pos = doc.page_content.find(para) if len(para) < 1000 else 0
-                            para_metadata = {**base_metadata, "start_pos": str(start_pos)}
-                            
-                            # Extract entities and relationships
-                            entities, relationships = self.extract_graph_elements(para)
-                            
-                            # Store entities in metadata (as string for Chroma compatibility)
-                            entity_names = [e["text"] for e in entities]
-                            para_metadata["entities"] = ",".join(entity_names)
-                            
-                            # Store paragraph chunk with enhanced metadata
-                            para_doc = Document(page_content=para, metadata=para_metadata)
-                            processed_chunks.append(para_doc)
-                            
-                            # Add entities and relationships to database and graph
-                            for entity in entities:
-                                # Add to database
-                                cursor.execute(
-                                    "INSERT OR IGNORE INTO entities (name, type, frequency, last_seen) VALUES (?, ?, ?, ?)",
-                                    (entity["text"], entity["type"], 1, datetime.now())
-                                )
-                                cursor.execute(
-                                    "UPDATE entities SET frequency = frequency + 1, last_seen = ? WHERE name = ?",
-                                    (datetime.now(), entity["text"])
-                                )
-                                
-                                # Add to graph
-                                if not self.graph.has_node(entity["text"]):
-                                    self.graph.add_node(entity["text"], type=entity["type"])
-                                else:
-                                    # Increment weight if node exists
-                                    weight = self.graph.nodes[entity["text"]].get("weight", 0) + 1
-                                    self.graph.nodes[entity["text"]]["weight"] = weight
-                            
-                            # Add relationships to graph
-                            for rel in relationships:
-                                # Add to database
-                                source_id = cursor.execute("SELECT id FROM entities WHERE name = ?", (rel["source"],)).fetchone()
-                                target_id = cursor.execute("SELECT id FROM entities WHERE name = ?", (rel["target"],)).fetchone()
-                                
-                                if source_id and target_id:
-                                    cursor.execute(
-                                        "INSERT OR IGNORE INTO relationships (source_id, target_id, type, frequency, chunks) VALUES (?, ?, ?, ?, ?)",
-                                        (source_id[0], target_id[0], rel["type"], 1, str(doc_id))
-                                    )
-                                    cursor.execute(
-                                        "UPDATE relationships SET frequency = frequency + 1 WHERE source_id = ? AND target_id = ? AND type = ?",
-                                        (source_id[0], target_id[0], rel["type"])
-                                    )
-                                
-                                # Add to graph if both entities exist
-                                if self.graph.has_node(rel["source"]) and self.graph.has_node(rel["target"]):
-                                    if self.graph.has_edge(rel["source"], rel["target"]):
-                                        # Increment weight if edge exists
-                                        weight = self.graph[rel["source"]][rel["target"]].get("weight", 0) + 1
-                                        self.graph[rel["source"]][rel["target"]]["weight"] = weight
-                                    else:
-                                        self.graph.add_edge(rel["source"], rel["target"], type=rel["type"], weight=1)
-                            
-                            # Also split into smaller sentence chunks for detailed retrieval
-                            sentences = sentence_splitter.split_text(para)
-                            for sentence in sentences:
-                                if len(sentence) < 30:  # Skip very short sentences
-                                    continue
-                                    
-                                # Create a document chunk for this sentence
-                                sent_metadata = {
-                                    **base_metadata,
-                                    "chunk_type": "sentence",
-                                    "start_pos": str(para.find(sentence)),
-                                    "parent_chunk": para[:100] + "..." if len(para) > 100 else para
-                                }
-                                sent_doc = Document(page_content=sentence, metadata=sent_metadata)
-                                processed_chunks.append(sent_doc)
-                    
-                    # Update document with chunk count
-                    cursor.execute(
-                        "UPDATE documents SET chunk_count = ? WHERE id = ?",
-                        (len(processed_chunks), doc_id)
-                    )
-                    
-                    all_docs.extend(processed_chunks)
-                    total_chunks += len(processed_chunks)
-                    print(f"Document '{metadata['title']}' processed into {len(processed_chunks)} chunks. Total chunks so far: {total_chunks}")
-                    
-                    # Commit every 10 documents to avoid data loss
-                    if len(all_docs) % 10 == 0:
-                        conn.commit()
-                        # Save graph periodically
-                        with open(self.graph_file, 'wb') as f:
-                            pickle.dump(self.graph, f)
-                
-                except Exception as e:
-                    print(f"Error processing {file_path}: {str(e)}")
-                
-                pbar.update(1)
-        
-        # Final commit
-        conn.commit()
+    Returns:
+        List[Document]: List of processed document chunks
+    """
+    conn = sqlite3.connect(self.metadata_db)
+    cursor = conn.cursor()
+    
+    # Find all files in source directory that match supported extensions
+    all_files = []
+    for ext in self.LOADER_MAPPING:
+        all_files.extend(glob.glob(os.path.join(self.source_directory, f"**/*{ext}"), recursive=True))
+    
+    # Get already processed files
+    cursor.execute("SELECT id, path FROM documents WHERE chunk_count IS NOT NULL")
+    processed_files_rows = cursor.fetchall()
+    processed_files_dict = {row[1]: row[0] for row in processed_files_rows}
+    
+    # Filter files based on what we want to process
+    if not force_reprocess:
+        # Only process new files
+        filtered_files = [f for f in all_files if f not in ignored_files and f not in processed_files_dict]
+        print(f"Found {len(filtered_files)} new documents to process")
+    else:
+        # Process all files (but still handle existing documents properly)
+        filtered_files = [f for f in all_files if f not in ignored_files]
+        print(f"Found {len(filtered_files)} documents to process, including {len([f for f in filtered_files if f in processed_files_dict])} already processed")
+    
+    if not filtered_files:
+        print("No documents to process")
         conn.close()
-        
-        # Save final graph
-        with open(self.graph_file, 'wb') as f:
-            pickle.dump(self.graph, f)
-        
-        print(f"Processed {len(filtered_files)} documents into {len(all_docs)} chunks")
-        return all_docs
+        return []
+    
+    # Process files
+    all_docs = []
+    total_chunks = 0  # Track total chunks processed
+    
+    with tqdm(total=len(filtered_files), desc="Processing documents") as pbar:
+        for file_path in filtered_files:
+            try:
+                # Check if this file was already processed
+                already_processed = file_path in processed_files_dict
+                
+                # If reprocessing, clear existing chunks
+                if already_processed and force_reprocess:
+                    doc_id = processed_files_dict[file_path]
+                    cursor.execute("DELETE FROM chunks WHERE doc_id = ?", (doc_id,))
+                    conn.commit()
+                    print(f"Cleared existing chunks for document ID {doc_id} ({file_path})")
+                
+                # Load document
+                docs = self.load_single_document(file_path)
+                if not docs:
+                    pbar.update(1)
+                    continue
+                
+                # Combine all text from document for metadata extraction
+                full_text = " ".join([doc.page_content for doc in docs])
+                
+                # Extract metadata
+                metadata = self.extract_document_metadata(full_text, file_path)
+                
+                # Get or create document ID
+                if already_processed:
+                    doc_id = processed_files_dict[file_path]
+                    # Update metadata
+                    cursor.execute(
+                        "UPDATE documents SET title = ?, author = ?, file_type = ?, size = ?, indexed_date = ?, themes = ? WHERE id = ?",
+                        (metadata["title"], metadata["author"], metadata["file_type"], 
+                         metadata["size"], datetime.now(), metadata["themes"], doc_id)
+                    )
+                else:
+                    try:
+                        # Insert document
+                        cursor.execute(
+                            "INSERT INTO documents (path, title, author, file_type, size, indexed_date, themes) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                            (file_path, metadata["title"], metadata["author"], metadata["file_type"], 
+                             metadata["size"], datetime.now(), metadata["themes"])
+                        )
+                        doc_id = cursor.lastrowid
+                    except sqlite3.IntegrityError:
+                        # If there's a race condition, get the existing ID
+                        cursor.execute("SELECT id FROM documents WHERE path = ?", (file_path,))
+                        doc_id = cursor.fetchone()[0]
+                
+                # Split into chunks with hierarchical approach
+                paragraph_splitter = RecursiveCharacterTextSplitter(
+                    chunk_size=self.config["chunk_size"],
+                    chunk_overlap=self.config["chunk_overlap"],
+                    separators=["\n\n", "\n", ". ", "! ", "? ", ";", ",", " ", ""]
+                )
+                sentence_splitter = RecursiveCharacterTextSplitter(
+                    chunk_size=self.config["sentence_chunk_size"],
+                    chunk_overlap=self.config["sentence_chunk_overlap"],
+                    separators=[". ", "! ", "? ", ";", "\n", ",", " ", ""]
+                )
+                
+                processed_chunks = []
+                
+                # First split into paragraphs
+                for i, doc in enumerate(docs):
+                    # Update base metadata
+                    base_metadata = {
+                        "source": file_path,
+                        "doc_id": str(doc_id),  # Convert to string for Chroma compatibility
+                        "title": metadata["title"],
+                        "author": metadata["author"],
+                        "chunk_type": "paragraph"
+                    }
+                    
+                    # Split into paragraphs
+                    paragraphs = paragraph_splitter.split_text(doc.page_content)
+                    
+                    for j, para in enumerate(paragraphs):
+                        # Find position in original text
+                        start_pos = doc.page_content.find(para) if len(para) < 1000 else 0
+                        para_metadata = {**base_metadata, "start_pos": str(start_pos)}
+                        
+                        # Extract entities and relationships
+                        entities, relationships = self.extract_graph_elements(para)
+                        
+                        # Store entities in metadata (as string for Chroma compatibility)
+                        entity_names = [e["text"] for e in entities]
+                        para_metadata["entities"] = ",".join(entity_names)
+                        
+                        # Store paragraph chunk with enhanced metadata
+                        para_doc = Document(page_content=para, metadata=para_metadata)
+                        processed_chunks.append(para_doc)
+                        
+                        # Add entities and relationships to database and graph
+                        for entity in entities:
+                            # Add to database
+                            cursor.execute(
+                                "INSERT OR IGNORE INTO entities (name, type, frequency, last_seen) VALUES (?, ?, ?, ?)",
+                                (entity["text"], entity["type"], 1, datetime.now())
+                            )
+                            cursor.execute(
+                                "UPDATE entities SET frequency = frequency + 1, last_seen = ? WHERE name = ?",
+                                (datetime.now(), entity["text"])
+                            )
+                            
+                            # Add to graph
+                            if not self.graph.has_node(entity["text"]):
+                                self.graph.add_node(entity["text"], type=entity["type"])
+                            else:
+                                # Increment weight if node exists
+                                weight = self.graph.nodes[entity["text"]].get("weight", 0) + 1
+                                self.graph.nodes[entity["text"]]["weight"] = weight
+                        
+                        # Add relationships to graph
+                        for rel in relationships:
+                            # Add to database
+                            source_id = cursor.execute("SELECT id FROM entities WHERE name = ?", (rel["source"],)).fetchone()
+                            target_id = cursor.execute("SELECT id FROM entities WHERE name = ?", (rel["target"],)).fetchone()
+                            
+                            if source_id and target_id:
+                                cursor.execute(
+                                    "INSERT OR IGNORE INTO relationships (source_id, target_id, type, frequency, chunks) VALUES (?, ?, ?, ?, ?)",
+                                    (source_id[0], target_id[0], rel["type"], 1, str(doc_id))
+                                )
+                                cursor.execute(
+                                    "UPDATE relationships SET frequency = frequency + 1 WHERE source_id = ? AND target_id = ? AND type = ?",
+                                    (source_id[0], target_id[0], rel["type"])
+                                )
+                            
+                            # Add to graph if both entities exist
+                            if self.graph.has_node(rel["source"]) and self.graph.has_node(rel["target"]):
+                                if self.graph.has_edge(rel["source"], rel["target"]):
+                                    # Increment weight if edge exists
+                                    weight = self.graph[rel["source"]][rel["target"]].get("weight", 0) + 1
+                                    self.graph[rel["source"]][rel["target"]]["weight"] = weight
+                                else:
+                                    self.graph.add_edge(rel["source"], rel["target"], type=rel["type"], weight=1)
+                        
+                        # Also split into smaller sentence chunks for detailed retrieval
+                        sentences = sentence_splitter.split_text(para)
+                        for sentence in sentences:
+                            if len(sentence) < 30:  # Skip very short sentences
+                                continue
+                                
+                            # Create a document chunk for this sentence
+                            sent_metadata = {
+                                **base_metadata,
+                                "chunk_type": "sentence",
+                                "start_pos": str(para.find(sentence)),
+                                "parent_chunk": para[:100] + "..." if len(para) > 100 else para
+                            }
+                            sent_doc = Document(page_content=sentence, metadata=sent_metadata)
+                            processed_chunks.append(sent_doc)
+                
+                # Update document with chunk count
+                cursor.execute(
+                    "UPDATE documents SET chunk_count = ? WHERE id = ?",
+                    (len(processed_chunks), doc_id)
+                )
+                
+                all_docs.extend(processed_chunks)
+                total_chunks += len(processed_chunks)
+                print(f"Document '{metadata['title']}' processed into {len(processed_chunks)} chunks. Total chunks so far: {total_chunks}")
+                
+                # Commit every 10 documents to avoid data loss
+                if len(all_docs) % 10 == 0:
+                    conn.commit()
+                    # Save graph periodically
+                    with open(self.graph_file, 'wb') as f:
+                        pickle.dump(self.graph, f)
+            
+            except Exception as e:
+                print(f"Error processing {file_path}: {str(e)}")
+                import traceback
+                traceback.print_exc()
+            
+            pbar.update(1)
+    
+    # Final commit
+    conn.commit()
+    conn.close()
+    
+    # Save final graph
+    with open(self.graph_file, 'wb') as f:
+        pickle.dump(self.graph, f)
+    
+    print(f"Processed {len(filtered_files)} documents into {len(all_docs)} chunks")
+    return all_docs
     
     def create_vector_store(self, chunks, force_new=False):
         """
@@ -550,7 +587,7 @@ class PatternIngest:
         # Check if vectorstore exists and we're not forcing a new one
         if os.path.exists(os.path.join(self.persist_directory, 'index')) and not force_new:
             # Update existing vectorstore in batches
-            print(f"Opening existing Chroma DB at {self.persist_directory}")
+            print(f"Opening existing ChromaDB at {self.persist_directory}")
             try:
                 db = Chroma(
                     persist_directory=self.persist_directory,
@@ -641,3 +678,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+     # End
