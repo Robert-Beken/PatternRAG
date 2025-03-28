@@ -62,7 +62,7 @@ python -m patternrag.ingest --config config/config.yaml
 
 3. **Start the API service**:
 ```bash
-python -m patternrag.service --config config/config.yaml
+python -m service.py --config config/config.yaml
 ```
 
 4. **Query the system**:
