@@ -57,7 +57,7 @@ cp config/default_config.yaml config/config.yaml
 
 2. **Process documents**:
 ```bash
-python -m patternrag.ingest --config config/config.yaml
+python -m ingest.py --config config/config.yaml
 ```
 
 3. **Start the API service**:
