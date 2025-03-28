@@ -176,12 +176,17 @@ class PatternIngest:
         print("Database schema initialized or verified")
     
     def init_knowledge_graph(self):
-        """Initialize or load existing knowledge graph."""
-        if os.path.exists(self.graph_file):
-            with open(self.graph_file, 'rb') as f:
-                graph = pickle.load(f)
-                print(f"Loaded existing knowledge graph with {graph.number_of_nodes()} nodes and {graph.number_of_edges()} edges")
-                return graph
+        """Initialize or load existing knowledge graph with error handling."""
+        if os.path.exists(self.graph_file) and os.path.getsize(self.graph_file) > 0:
+            try:
+                with open(self.graph_file, 'rb') as f:
+                    graph = pickle.load(f)
+                    print(f"Loaded existing knowledge graph with {graph.number_of_nodes()} nodes and {graph.number_of_edges()} edges")
+                    return graph
+            except (EOFError, pickle.UnpicklingError) as e:
+                print(f"Error loading knowledge graph: {str(e)}")
+                print("Creating new knowledge graph")
+                return nx.Graph()
         print("Creating new knowledge graph")
         return nx.Graph()
     
@@ -337,20 +342,25 @@ class PatternIngest:
         for ext in self.LOADER_MAPPING:
             all_files.extend(glob.glob(os.path.join(self.source_directory, f"**/*{ext}"), recursive=True))
         
-        # If force_reprocess is False, filter out already processed files
+        # Get already processed files
+        cursor.execute("SELECT id, path FROM documents WHERE chunk_count IS NOT NULL")
+        processed_files_rows = cursor.fetchall()
+        processed_files_dict = {row[1]: row[0] for row in processed_files_rows}
+        
+        # Filter files based on what we want to process
         if not force_reprocess:
-            cursor.execute("SELECT path FROM documents WHERE chunk_count IS NOT NULL")
-            processed_files = [row[0] for row in cursor.fetchall()]
-            filtered_files = [f for f in all_files if f not in ignored_files and f not in processed_files]
+            # Only process new files
+            filtered_files = [f for f in all_files if f not in ignored_files and f not in processed_files_dict]
+            print(f"Found {len(filtered_files)} new documents to process")
         else:
+            # Process all files (but still handle existing documents properly)
             filtered_files = [f for f in all_files if f not in ignored_files]
+            print(f"Found {len(filtered_files)} documents to process, including {len([f for f in filtered_files if f in processed_files_dict])} already processed")
         
         if not filtered_files:
-            print("No new documents to process")
+            print("No documents to process")
             conn.close()
             return []
-        
-        print(f"Found {len(filtered_files)} documents to process")
         
         # Process files
         all_docs = []
@@ -359,6 +369,16 @@ class PatternIngest:
         with tqdm(total=len(filtered_files), desc="Processing documents") as pbar:
             for file_path in filtered_files:
                 try:
+                    # Check if this file was already processed
+                    already_processed = file_path in processed_files_dict
+                    
+                    # If reprocessing, clear existing chunks
+                    if already_processed and force_reprocess:
+                        doc_id = processed_files_dict[file_path]
+                        cursor.execute("DELETE FROM chunks WHERE doc_id = ?", (doc_id,))
+                        conn.commit()
+                        print(f"Cleared existing chunks for document ID {doc_id} ({file_path})")
+                    
                     # Load document
                     docs = self.load_single_document(file_path)
                     if not docs:
@@ -371,13 +391,28 @@ class PatternIngest:
                     # Extract metadata
                     metadata = self.extract_document_metadata(full_text, file_path)
                     
-                    # Insert document into database
-                    cursor.execute(
-                        "INSERT INTO documents (path, title, author, file_type, size, indexed_date, themes) VALUES (?, ?, ?, ?, ?, ?, ?)",
-                        (file_path, metadata["title"], metadata["author"], metadata["file_type"], 
-                         metadata["size"], datetime.now(), metadata["themes"])
-                    )
-                    doc_id = cursor.lastrowid
+                    # Get or create document ID
+                    if already_processed:
+                        doc_id = processed_files_dict[file_path]
+                        # Update metadata
+                        cursor.execute(
+                            "UPDATE documents SET title = ?, author = ?, file_type = ?, size = ?, indexed_date = ?, themes = ? WHERE id = ?",
+                            (metadata["title"], metadata["author"], metadata["file_type"], 
+                             metadata["size"], datetime.now(), metadata["themes"], doc_id)
+                        )
+                    else:
+                        try:
+                            # Insert document
+                            cursor.execute(
+                                "INSERT INTO documents (path, title, author, file_type, size, indexed_date, themes) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                                (file_path, metadata["title"], metadata["author"], metadata["file_type"], 
+                                 metadata["size"], datetime.now(), metadata["themes"])
+                            )
+                            doc_id = cursor.lastrowid
+                        except sqlite3.IntegrityError:
+                            # If there's a race condition, get the existing ID
+                            cursor.execute("SELECT id FROM documents WHERE path = ?", (file_path,))
+                            doc_id = cursor.fetchone()[0]
                     
                     # Split into chunks with hierarchical approach
                     paragraph_splitter = RecursiveCharacterTextSplitter(
@@ -503,6 +538,8 @@ class PatternIngest:
                 
                 except Exception as e:
                     print(f"Error processing {file_path}: {str(e)}")
+                    import traceback
+                    traceback.print_exc()
                 
                 pbar.update(1)
         
@@ -550,7 +587,7 @@ class PatternIngest:
         # Check if vectorstore exists and we're not forcing a new one
         if os.path.exists(os.path.join(self.persist_directory, 'index')) and not force_new:
             # Update existing vectorstore in batches
-            print(f"Opening existing Chroma DB at {self.persist_directory}")
+            print(f"Opening existing ChromaDB at {self.persist_directory}")
             try:
                 db = Chroma(
                     persist_directory=self.persist_directory,
@@ -615,6 +652,7 @@ class PatternIngest:
                 print(f"Error creating vector store: {str(e)}")
                 return None
 
+
 def main():
     """Main function for running document ingestion process."""
     parser = argparse.ArgumentParser(description="Pattern RAG Document Ingestion")
@@ -638,6 +676,7 @@ def main():
         print("Vector store creation/update successful!")
     else:
         print("Vector store operation failed or no documents were processed.")
+
 
 if __name__ == "__main__":
     main()
