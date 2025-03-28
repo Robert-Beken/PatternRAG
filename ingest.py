@@ -554,104 +554,104 @@ class PatternIngest:
         print(f"Processed {len(filtered_files)} documents into {len(all_docs)} chunks")
         return all_docs
     
-def create_vector_store(self, chunks, force_new=False):
-    """
-    Create or update vector store with document chunks.
-    
-    Args:
-        chunks (List[Document]): List of document chunks
-        force_new (bool): Whether to create a new vector store
+    def create_vector_store(self, chunks, force_new=False):
+        """
+        Create or update vector store with document chunks.
         
-    Returns:
-        Chroma: Vector store object
-    """
-    if not chunks:
-        print("No chunks to add to vector database")
-        return None
-    
-    # Create embeddings
-    print(f"Initializing embeddings model: {self.config['embeddings_model_name']}")
-    embeddings = HuggingFaceEmbeddings(model_name=self.config['embeddings_model_name'])
-    
-    # Set client settings for Chroma
-    import chromadb
-    print(f"Using ChromaDB version: {chromadb.__version__}")
-    
-    client_settings = chromadb.config.Settings(
-        anonymized_telemetry=False,
-        allow_reset=True
-    )
-    
-    batch_size = self.config["batch_size"]  # Size of batches for processing
-    
-    # Check if vectorstore exists and we're not forcing a new one
-    if os.path.exists(os.path.join(self.persist_directory, 'index')) and not force_new:
-        # Update existing vectorstore in batches
-        print(f"Opening existing ChromaDB at {self.persist_directory}")
-        try:
-            db = Chroma(
-                persist_directory=self.persist_directory,
-                embedding_function=embeddings,
-                client_settings=client_settings
-            )
-            print("Successfully opened existing Chroma database")
+        Args:
+            chunks (List[Document]): List of document chunks
+            force_new (bool): Whether to create a new vector store
             
-            total_added = 0
-            for i in range(0, len(chunks), batch_size):
-                batch = chunks[i:i+batch_size]
-                print(f"Adding batch {i//batch_size + 1}/{(len(chunks)-1)//batch_size + 1} ({len(batch)} chunks)...")
-                
-                db.add_documents(batch)
-                total_added += len(batch)
-                print(f"Batch {i//batch_size + 1} added successfully. Total added: {total_added}")
-                
-            return db
-            
-        except Exception as e:
-            print(f"Error updating existing vector store: {str(e)}")
-            if force_new:
-                print("Forcing creation of new vector store as requested")
-            else:
-                return None
-    else:
-        # Create new vectorstore
-        print(f"Creating new Chroma DB at {self.persist_directory}")
-        os.makedirs(self.persist_directory, exist_ok=True)
-        
-        try:
-            # Start with a small batch to establish the database
-            first_batch_size = min(500, len(chunks))
-            first_batch = chunks[:first_batch_size]
-            print(f"Creating initial database with first {first_batch_size} chunks...")
-            
-            # Create the initial database
-            db = Chroma.from_documents(
-                first_batch,
-                embeddings,
-                persist_directory=self.persist_directory,
-                client_settings=client_settings
-            )
-            print(f"Initial database created with {first_batch_size} chunks.")
-            
-            # Note: removed db.persist() calls as they're not needed with current Chroma version
-            # Persistence is handled automatically when persist_directory is specified
-            
-            # Process remaining documents in batches
-            total_added = first_batch_size
-            for i in range(first_batch_size, len(chunks), batch_size):
-                batch = chunks[i:i+batch_size]
-                print(f"Adding batch {(i-first_batch_size)//batch_size + 1}/{(len(chunks)-first_batch_size-1)//batch_size + 1} ({len(batch)} chunks)...")
-                db.add_documents(batch)
-                total_added += len(batch)
-                print(f"Batch added. Total chunks in database: {total_added}")
-                # Removed db.persist() call here as well
-                
-            return db
-
-        except Exception as e:
-            print(f"Error creating vector store: {str(e)}")
+        Returns:
+            Chroma: Vector store object
+        """
+        if not chunks:
+            print("No chunks to add to vector database")
             return None
+        
+        # Create embeddings
+        print(f"Initializing embeddings model: {self.config['embeddings_model_name']}")
+        embeddings = HuggingFaceEmbeddings(model_name=self.config['embeddings_model_name'])
+        
+        # Set client settings for Chroma
+        import chromadb
+        print(f"Using ChromaDB version: {chromadb.__version__}")
+        
+        client_settings = chromadb.config.Settings(
+            anonymized_telemetry=False,
+            allow_reset=True
+        )
+        
+        batch_size = self.config["batch_size"]  # Size of batches for processing
+        
+        # Check if vectorstore exists and we're not forcing a new one
+        if os.path.exists(os.path.join(self.persist_directory, 'index')) and not force_new:
+            # Update existing vectorstore in batches
+            print(f"Opening existing ChromaDB at {self.persist_directory}")
+            try:
+                db = Chroma(
+                    persist_directory=self.persist_directory,
+                    embedding_function=embeddings,
+                    client_settings=client_settings
+                )
+                print("Successfully opened existing Chroma database")
+                
+                total_added = 0
+                for i in range(0, len(chunks), batch_size):
+                    batch = chunks[i:i+batch_size]
+                    print(f"Adding batch {i//batch_size + 1}/{(len(chunks)-1)//batch_size + 1} ({len(batch)} chunks)...")
+                    
+                    db.add_documents(batch)
+                    total_added += len(batch)
+                    print(f"Batch {i//batch_size + 1} added successfully. Total added: {total_added}")
+                    
+                return db
+                
+            except Exception as e:
+                print(f"Error updating existing vector store: {str(e)}")
+                if force_new:
+                    print("Forcing creation of new vector store as requested")
+                else:
+                    return None
+        else:
+            # Create new vectorstore
+            print(f"Creating new Chroma DB at {self.persist_directory}")
+            os.makedirs(self.persist_directory, exist_ok=True)
             
+            try:
+                # Start with a small batch to establish the database
+                first_batch_size = min(500, len(chunks))
+                first_batch = chunks[:first_batch_size]
+                print(f"Creating initial database with first {first_batch_size} chunks...")
+                
+                # Create the initial database
+                db = Chroma.from_documents(
+                    first_batch,
+                    embeddings,
+                    persist_directory=self.persist_directory,
+                    client_settings=client_settings
+                )
+                print(f"Initial database created with {first_batch_size} chunks.")
+                # Note: persist() method removed as it's not needed with newer Chroma versions
+                # Persistence is handled automatically when persist_directory is specified
+                
+                # Process remaining documents in batches
+                total_added = first_batch_size
+                for i in range(first_batch_size, len(chunks), batch_size):
+                    batch = chunks[i:i+batch_size]
+                    print(f"Adding batch {(i-first_batch_size)//batch_size + 1}/{(len(chunks)-first_batch_size-1)//batch_size + 1} ({len(batch)} chunks)...")
+                    db.add_documents(batch)
+                    total_added += len(batch)
+                    print(f"Batch added. Total chunks in database: {total_added}")
+                    # Note: persist() method removed here as well
+                
+                return db
+
+            except Exception as e:
+                print(f"Error creating vector store: {str(e)}")
+                return None
+
+
 def main():
     """Main function for running document ingestion process."""
     parser = argparse.ArgumentParser(description="Pattern RAG Document Ingestion")
