@@ -559,12 +559,19 @@ async def lifespan(app: FastAPI):
         service = PatternRAGService(config_path)
     except Exception as e:
         logger.error(f"Error initializing service: {str(e)}")
+        # Create a service with default settings as a fallback
+        try:
+            logger.info("Attempting to initialize with default settings...")
+            service = PatternRAGService()
+        except Exception as e2:
+            logger.error(f"Failed to initialize with default settings: {str(e2)}")
+            service = None
     
     yield  # Application runs here
     
     # Shutdown logic
     logger.info("Shutting down...")
-    if hasattr(service, 'executor'):
+    if hasattr(service, 'executor') and service is not None:
         service.executor.shutdown(wait=False)
 
 # Initialize FastAPI with lifespan
