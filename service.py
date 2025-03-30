@@ -84,7 +84,23 @@ class PatternRAGService:
         
         # Initialize components
         self.initialize_components()
+
+    def ensure_string(self, value) -> str:
+        """
+        Ensure a value is a string.
     
+        Args:
+         value: Any value that needs to be converted to string
+        
+        Returns:
+         str: String representation of the value
+        """
+        if value is None:
+             return ""
+        if not isinstance(value, str):
+             return str(value)
+        return value
+
     def initialize_components(self):
         """Initialize the necessary components for the service."""
         try:
@@ -197,127 +213,152 @@ class PatternRAGService:
                 logger.error("Critical error: Vector store failed to load")
                 raise
     
-    def find_related_entities(self, query_entities: List[str], top_n: int = 5) -> List[str]:
-        """
-        Find related entities in the knowledge graph.
-        
-        Args:
-            query_entities (List[str]): List of entities from the query
-            top_n (int): Number of top related entities to return
-            
-        Returns:
-            List[str]: List of related entities
-        """
-        if not self.knowledge_graph or self.knowledge_graph.number_of_nodes() == 0:
-            return []
-
-        related_entities = {}
-
-        for entity in query_entities:
-            if entity in self.knowledge_graph:
-                # Get direct connections
-                for neighbor in self.knowledge_graph.neighbors(entity):
-                    score = self.knowledge_graph[entity][neighbor].get('weight', 1)
-                    if neighbor in related_entities:
-                        related_entities[neighbor] += score
-                    else:
-                        related_entities[neighbor] = score
-
-                # Use graph measures for broader connections
-                try:
-                    # PageRank to find important connected entities
-                    pr = nx.pagerank(self.knowledge_graph, personalization={entity: 1.0})
-                    for node, score in pr.items():
-                        if node != entity and node not in query_entities:
-                            if node in related_entities:
-                                related_entities[node] += score * 10  # Scale up pagerank scores
-                            else:
-                                related_entities[node] = score * 10
-                except:
-                    # If PageRank fails, fall back to simpler methods
-                    pass
-
-        # Sort by score and return top N
-        sorted_entities = sorted(related_entities.items(), key=lambda x: x[1], reverse=True)
-        return [entity for entity, score in sorted_entities[:top_n]]
+def find_related_entities(self, query_entities: List[str], top_n: int = 5) -> List[str]:
+    """
+    Find related entities in the knowledge graph.
     
-    def extract_entities_from_db(self, query: str) -> List[str]:
-        """
-        Extract entities that might appear in the query using the metadata database.
+    Args:
+        query_entities (List[str]): List of entities from the query
+        top_n (int): Number of top related entities to return
         
-        Args:
-            query (str): User query
-            
-        Returns:
-            List[str]: List of entities found in the query
-        """
-        try:
-            conn = sqlite3.connect(self.metadata_db)
-            cursor = conn.cursor()
+    Returns:
+        List[str]: List of related entities
+    """
+    # NEW CODE: Ensure all query entities are strings
+    query_entities = [str(entity) for entity in query_entities if entity is not None]
+    
+    if not self.knowledge_graph or self.knowledge_graph.number_of_nodes() == 0:
+        return []
 
-            # Get all entities from DB
-            cursor.execute("SELECT name FROM entities ORDER BY frequency DESC LIMIT 1000")
-            all_entities = [row[0] for row in cursor.fetchall()]
-            conn.close()
+    related_entities = {}
 
-            # Find which entities appear in the query
-            query_lower = query.lower()
-            found_entities = []
-            for entity in all_entities:
-                if entity.lower() in query_lower:
+    for entity in query_entities:
+        if entity in self.knowledge_graph:
+            # Get direct connections
+            for neighbor in self.knowledge_graph.neighbors(entity):
+                score = self.knowledge_graph[entity][neighbor].get('weight', 1)
+                if neighbor in related_entities:
+                    related_entities[neighbor] += score
+                else:
+                    related_entities[neighbor] = score
+
+            # Use graph measures for broader connections
+            try:
+                # PageRank to find important connected entities
+                pr = nx.pagerank(self.knowledge_graph, personalization={entity: 1.0})
+                for node, score in pr.items():
+                    if node != entity and node not in query_entities:
+                        if node in related_entities:
+                            related_entities[node] += score * 10  # Scale up pagerank scores
+                        else:
+                            related_entities[node] = score * 10
+            except:
+                # If PageRank fails, fall back to simpler methods
+                pass
+
+    # Sort by score and return top N
+    sorted_entities = sorted(related_entities.items(), key=lambda x: x[1], reverse=True)
+    return [entity for entity, score in sorted_entities[:top_n]]
+    
+def extract_entities_from_db(self, query: str) -> List[str]:
+    """Extract entities that might appear in the query using the metadata database."""
+    try:
+        conn = sqlite3.connect(self.metadata_db)
+        cursor = conn.cursor()
+
+        # Get all entities from DB
+        cursor.execute("SELECT name, frequency FROM entities ORDER BY frequency DESC LIMIT 1000")
+        all_entities = [(row[0], row[1]) for row in cursor.fetchall()]
+        conn.close()
+
+        # Find which entities appear in the query
+        query_lower = query.lower()
+        found_entities = []
+        
+        # First pass: exact matches with minimum length
+        for entity, freq in all_entities:
+            entity_lower = entity.lower()
+            # Filter out very short entities (likely false positives)
+            if len(entity) <= 2:
+                continue
+            # Look for word boundaries to avoid substring matches
+            if re.search(r'\b' + re.escape(entity_lower) + r'\b', query_lower):
+                found_entities.append(entity)
+                
+        # If we found fewer than 3 entities, try again with less strict matching
+        if len(found_entities) < 3:
+            for entity, freq in all_entities:
+                if entity not in found_entities and entity.lower() in query_lower and len(entity) > 2:
                     found_entities.append(entity)
-
-            return found_entities
-        except Exception as e:
-            logger.error(f"Error extracting entities from DB: {str(e)}")
-            return []
-    
-    def expand_query_for_patterns(self, query: str) -> List[str]:
-        """
-        Generate multiple queries that look for patterns and connections.
-        
-        Args:
-            query (str): Original user query
+                    if len(found_entities) >= 5:  # Cap at 5 entities
+                        break
+                        
+        # Apply frequency threshold to filter out uncommon entities
+        if len(found_entities) > 5:
+            # Get frequencies for found entities
+            entity_freq = {e: next((f for en, f in all_entities if en == e), 0) for e in found_entities}
+            # Keep only the most frequent entities
+            found_entities = sorted(found_entities, key=lambda e: entity_freq[e], reverse=True)[:5]
             
-        Returns:
-            List[str]: List of expanded queries
+        return found_entities
+    except Exception as e:
+        logger.error(f"Error extracting entities from DB: {str(e)}")
+        return []
+        
+def expand_query_for_patterns(self, query: str) -> List[str]:
+    """Generate multiple queries that look for patterns and connections."""
+    # Ensure query is a string
+    if not isinstance(query, str):
+        query = str(query)
+        logger.warning(f"Non-string query converted to string: {query}")
+
+    try:
+        expansion_prompt = f"""
+        I need to generate focused, specific search queries based on the following user question.
+        Original query: "{query}"
+        
+        Please create 3 expanded versions that:
+        1. Stay directly relevant to the main topic of the original query
+        2. Add specific details or angles that could help find relevant information
+        3. Use precise terminology related to the domain of the question
+        
+        Each expanded query should:
+        - Be clearly related to the original question
+        - Use precise language rather than being overly broad
+        - Not introduce unrelated concepts or tangents
+        - Not be a rephrasing of the same question, but add value
+        
+        Format your response as three separate queries only, one per line, with no additional text.
         """
-        try:
-            expansion_prompt = f"""
-            I'm searching for connections and patterns related to this query.
-            Generate 3 expanded queries that help find related concepts across different domains.
-            Focus on identifying meaningful relationships that might not be immediately obvious.
 
-            Original query: {query}
+        # Get expanded queries from LLM
+        response = requests.post(
+            f"{self.llm_api_url}/api/generate",
+            json={"model": self.model, "prompt": expansion_prompt, "stream": False},
+            timeout=60
+        )
 
-            Format your response as three separate queries only, one per line.
-            """
-
-            # Get expanded queries from LLM
-            response = requests.post(
-                f"{self.llm_api_url}/api/generate",
-                json={"model": self.model, "prompt": expansion_prompt, "stream": False},
-                timeout=60
-            )
-
-            if response.status_code == 200:
-                expanded_text = response.json().get('response', '')
-                # Parse the output into individual queries
-                expanded_queries = [line.strip() for line in expanded_text.split('\n') if line.strip()]
-                # Add the original query and limit to max 4 queries total
-                expanded_queries = [query] + expanded_queries[:3]
-                return expanded_queries
-            else:
-                logger.warning(f"Error expanding query: {response.status_code}")
-                return [query]
-        except requests.exceptions.Timeout:
-            logger.warning("Timeout in query expansion, using original query only")
+        if response.status_code == 200:
+            expanded_text = response.json().get('response', '')
+            # Parse the output into individual queries
+            expanded_queries = [line.strip() for line in expanded_text.split('\n') if line.strip() and not line.startswith('#')]
+            # Add the original query and limit to max 4 queries total
+            expanded_queries = [query] + expanded_queries[:3]
+            # Log for debugging
+            logger.info(f"Expanded queries: {expanded_queries}")
+            return expanded_queries
+        else:
+            logger.warning(f"Error expanding query: {response.status_code}")
             return [query]
-        except Exception as e:
-            logger.error(f"Error in query expansion: {str(e)}")
-            return [query]
+    except requests.exceptions.Timeout:
+        logger.warning("Timeout in query expansion, using original query only")
+        return [query]
+    except Exception as e:
+        logger.error(f"Error in query expansion: {str(e)}")
+        return [query]
     
     @lru_cache(maxsize=100)
+    
     def query_llm(self, prompt_text: str) -> str:
         """
         Query the language model.
@@ -399,31 +440,76 @@ class PatternRAGService:
             # 4. Gather documents from multiple search angles
             all_docs = []
             if self.retriever:
-                queries = expanded_queries + related_entities[:5] + (self.patterns[:3] if search_mode == "pattern" else [])
+                # NEW CODE: Ensure all items in queries are strings
+                safe_expanded_queries = [str(q) for q in expanded_queries]
+                safe_related_entities = [str(entity) for entity in related_entities[:5]]
+                safe_patterns = [str(pattern) for pattern in (self.patterns[:3] if search_mode == "pattern" else [])]
+                
+                queries = safe_expanded_queries + safe_related_entities + safe_patterns
+                
+                # NEW CODE: Log the queries for debugging
+                logger.info(f"[{request_id}] Using queries: {queries}")
+                
                 try:
                     batch_start = time.time()  # Profiling
                     retriever_batch = RunnableParallel({"doc": self.retriever})
                     batch_results = retriever_batch.invoke(queries)  # Batch process all queries
-                    all_docs = [doc for sublist in batch_results["doc"] for doc in sublist]  # Flatten correctly
+                    
+                    # NEW CODE: Improved error handling for flattening
+                    try:
+                        all_docs = []
+                        for result in batch_results.get("doc", []):
+                            if isinstance(result, list):
+                                all_docs.extend(result)
+                            else:
+                                logger.warning(f"[{request_id}] Non-list result in batch_results['doc']: {type(result)}")
+                                if result is not None:
+                                    all_docs.append(result)
+                    except Exception as flatten_error:
+                        logger.error(f"[{request_id}] Error flattening results: {str(flatten_error)}")
+                        # Fallback to original approach
+                        all_docs = [doc for sublist in batch_results.get("doc", []) for doc in sublist if isinstance(sublist, list)]
+                    
                     logger.info(f"[{request_id}] Retrieved {len(all_docs)} docs from batch query in {time.time() - batch_start:.2f}s")
                     
                     # Optionally log individual counts for debugging
                     start_idx = 0
                     for q in queries:
-                        end_idx = start_idx + (10 if q in expanded_queries else 3 if q in related_entities else 2)
+                        end_idx = start_idx + (10 if q in safe_expanded_queries else 3 if q in safe_related_entities else 2)
                         if end_idx <= len(all_docs):
                             logger.info(f"[{request_id}] Retrieved {len(all_docs[start_idx:end_idx])} docs for: {q}")
                         start_idx = end_idx
                 except Exception as e:
                     logger.error(f"[{request_id}] Error in batch retrieval: {str(e)}")
-                    # Fallback to sequential
+                    # Fallback to sequential with better error handling
                     for q in queries:
                         try:
+                            # NEW CODE: Safe type checking
+                            if not isinstance(q, str):
+                                logger.warning(f"[{request_id}] Converting non-string query to string: {type(q)}")
+                                q = str(q)
+                                
                             docs = self.retriever.invoke(q)
-                            all_docs.extend(docs[:10 if q in expanded_queries else 3 if q in related_entities else 2])
-                            logger.info(f"[{request_id}] Retrieved {len(docs[:10 if q in expanded_queries else 3 if q in related_entities else 2])} docs for: {q}")
+                            
+                            # NEW CODE: Safer limit calculation
+                            limit = 10
+                            if q in safe_expanded_queries:
+                                limit = 10
+                            elif q in safe_related_entities:
+                                limit = 3
+                            else:
+                                limit = 2
+                                
+                            if docs and isinstance(docs, list):
+                                safe_docs = docs[:limit]
+                                all_docs.extend(safe_docs)
+                                logger.info(f"[{request_id}] Retrieved {len(safe_docs)} docs for: {q}")
+                            else:
+                                logger.warning(f"[{request_id}] No docs or invalid docs returned for: {q}")
                         except Exception as e2:
                             logger.error(f"[{request_id}] Error retrieving docs for '{q}': {str(e2)}")
+                            import traceback
+                            logger.error(traceback.format_exc())
 
             # 5. Deduplicate and prioritize docs
             unique_docs = {}
@@ -462,22 +548,29 @@ class PatternRAGService:
             if len(sources) > 0:
                 # Create a prompt that specifically asks for pattern identification
                 pattern_prompt = f"""
-                Analyze the following information and identify meaningful patterns, connections, or correlations that might not be immediately obvious. 
-                Focus on finding unexpected connections between different concepts, time periods, or domains of knowledge.
-                Look for:
-                1. Similarities across seemingly unrelated domains
-                2. Recurring themes, symbols, or structures
-                3. Causal relationships that span multiple fields
-                4. Temporal patterns that suggest deeper connections
-                5. Structural or conceptual parallels
-                
-                QUERY: {query}
-                
+                You are analyzing documents to find meaningful connections related to this query: "{query}"
+
+                Focus on finding well-supported connections based ONLY on the provided information sources.
+                Do NOT introduce external knowledge or make speculative connections.
+
+                For each potential connection:
+                1. Ensure it's directly supported by at least two sources
+                2. Note the specific evidence in the texts that supports this connection
+                3. Rate your confidence in this connection (High/Medium/Low)
+
+                IMPORTANT: Prioritize factual connections over speculative ones. If you can't find strong connections, state that clearly rather than forcing tenuous links.
+
                 INFORMATION SOURCES:
                 """
+
                 for i, source in enumerate(sources):
-                    pattern_prompt += f"\n\nSOURCE {i+1} - {source['title']} by {source['author']}:\n{source['content']}"
-                
+                    # Ensure all fields are strings
+                    title = self.ensure_string(source.get('title', 'Unknown'))
+                    author = self.ensure_string(source.get('author', 'Unknown'))
+                    content = self.ensure_string(source.get('content', ''))
+    
+                    pattern_prompt += f"\n\nSOURCE {i+1} - {title} by {author}:\n{content}"                
+
                 # Submit pattern analysis to thread pool
                 logger.info(f"[{request_id}] Requesting pattern analysis from LLM")
                 futures = []
@@ -517,12 +610,23 @@ class PatternRAGService:
                 # 8. Generate final answer that highlights the patterns
                 answer_prompt = f"""
                 You are a pattern-finding assistant that explores connections across different domains of knowledge.
+
                 QUERY: {query}
+
                 Based on your analysis, you've found these potential connections:
                 {connections_text}
-                Now provide a clear, engaging response to the original query. Weave in the connections you've identified and cite specific evidence from the sources. Focus on the most intriguing possibilities while keeping it grounded in the data.
-                """
-                
+
+                Provide a clear, helpful response to the original query. Follow these guidelines:
+                1. Address the query directly and stay on topic
+                2. Only mention connections that are strongly supported by the source materials
+                3. Clearly distinguish between factual statements and more speculative connections
+                4. Use a balanced, objective tone - avoid sensationalism or exaggeration
+                5. If the evidence is limited or connections are weak, acknowledge this honestly
+                6. Keep your response focused and concise
+
+                Your primary goal is accuracy and helpfulness, not finding patterns at all costs.
+                """ 
+                               
                 logger.info(f"[{request_id}] Generating final response")
                 answer_start = time.time()  # Profiling
                 answer_future = self.executor.submit(self.query_llm, answer_prompt)
