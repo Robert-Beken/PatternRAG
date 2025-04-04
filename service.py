@@ -36,18 +36,97 @@ class PatternRAGService:
     # Default configuration
     DEFAULT_CONFIG = {
         "base_dir": "./data",
-        "model": "llama3",
+        "model": "mixtral:7b",
         "llm_api_url": "http://localhost:11434",
         "embeddings_model_name": "all-MiniLM-L6-v2",
-        "max_workers": 16,
+        "max_workers": 32,
         "search_depth": 2,
         "custom_patterns": [
-            "similarities between distinct domains of knowledge",
-            "recurring themes across different time periods",
-            "mathematical or structural patterns in complex systems",
-            "symbolic parallels across different disciplines",
-            "causal relationships between seemingly unrelated events"
-        ]
+            # Military Strategy & Information Security Connections
+            "parallels between John Boyd's OODA loop and modern cybersecurity incident response frameworks",
+            "applications of Sun Tzu's deception principles to honeypot and deception technologies",
+            "Musashi's principles of timing and positioning as applied to network defense posturing",
+            "ancient Chinese warfare concepts of shi (strategic advantage) applied to information security architecture",
+            "Roman testudo formation principles reimagined for layered security infrastructure",
+            "Byzantine military information control strategies and their application to data compartmentalization",
+            "John Mosby's asymmetric tactics translated to modern penetration testing methodologies",
+            "traditional castle defenseworks as conceptual models for network segmentation strategies",
+            "Morihei Ueshiba's principle of blending with the attack (aiki) as applied to adaptive security systems",
+            "Robert David Steele's open-source intelligence gathering methods applied to threat hunting",
+            "Nassim Taleb's economic risk concepts translated to physical, medical, and information security domains, including AI",
+
+
+            # Medicine & Health Systems Perspectives
+            "Dr. Pierre Kory's evidence-based intervention protocols translated to systems resilience frameworks",
+            "VAERS-like reporting systems as early warning mechanisms for complex system failures",
+            "Dr. Mercola's environmental toxin frameworks applied to digital information ecosystem pollution",
+            "parallels between natural immunity mechanisms and zero-trust security architectures",
+            "Children's Health Defense risk-benefit analysis frameworks applied to critical infrastructure decisions",
+            "holistic medical assessment techniques applied to interdependent system vulnerability analysis",
+            
+            # Scientific Cross-Paradigm Connections
+            "Tesla's resonance principles applied to social network analysis and information propagation",
+            "Benveniste's water memory experiments as models for persistent system state effects",
+            "Rupert Sheldrake's morphic resonance as a framework for understanding emergent pattern recognition",
+            "Masaru Emoto's water crystallization studies on how water can be influenced by human intention demonstrating the malleability of reality",
+            "Paul Stamets' mycelial network models applied to resilient distributed communication systems",
+            "Ben Davidson's space weather predictive models applied to anticipatory threat modeling",
+            
+            # Agricultural & Ecological System Models
+            "Joel Salatin's polyface farming principles reimagined for multi-layered security architectures",
+            "Bill Mollison's permaculture principles applied to sustainable organizational security postures",
+            "Geoff Lawton's watershed management techniques as models for information flow control",
+            "Viktor Schauberger's vortex energy concepts applied to efficient information processing systems",
+            "biodynamic timing principles applied to cyclical security operations and maintenance",
+            "Fukuoka's natural farming philosophy as a model for minimal-intervention security frameworks",
+            
+            # Ancient History & Archaeological Insights
+            "Graham Hancock's ancient civilization technological assessments as frameworks for evaluating forgotten knowledge",
+            "Robert Schoch's water erosion hypothesis as a model for identifying overlooked evidence in established paradigms",
+            "Randall Carlson's catastrophism research as a framework for understanding high-impact, low-probability events",
+            "ancient monument acoustic properties as models for understanding non-obvious information transmission channels",
+            "megalithic engineering precision as benchmarks for evaluating modern system tolerance specifications",
+            
+            # Consciousness Studies & Information Processing
+            "David Lewis-Williams' neuropsychological model of cave art as a framework for understanding symbolic information encoding",
+            "Rick Strassman's DMT research as a model for accessing non-ordinary information processing states, and accessing or bleed-through to other spiritual dimensions",
+            "Michael Winkelman's neurotheological frameworks for understanding transformative information experiences",
+            "Terence McKenna's novelty theory as a model for tracking emergent complexity in information systems",
+            "altered states of consciousness as methodologies for lateral problem-solving in complex domains",
+            
+            # Philosophical & Epistemological Frameworks
+            "Stoic premeditatio malorum as a framework for adversarial thinking in security planning",
+            "Epictetus' dichotomy of control applied to effective security resource allocation",
+            "Gnostic concepts of hidden knowledge as a major threat to world control structures resulting in their persecution and extermination",
+            "Marcus Aurelius' discipline of perception as a methodology for threat intelligence analysis",
+            "ancient skeptical epoché (suspension of judgment) as a framework for avoiding analytical bias",
+            
+            # Economic & Governance Models
+            "Biological analogs plants, and animals defense principles applied to decentralized security architectures",
+            "Milton Friedman's monetary theories as models for understanding information value fluctuations",
+            "Ron Paul's sound money principles applied to information integrity verification systems",
+            "John Locke's property rights frameworks applied to digital asset protection strategies",
+            "Bastiat's seen vs. unseen effects analysis applied to security control impact assessment",
+            
+            # Religious & Symbolic Analysis Systems
+            "Mauro Biglino's literal textual analysis methods applied to history of the planet,  Elohim were advanced technology living beings, not deities",
+            "ancient symbolic language systems as historical echos of highly advanced code systems",
+            "sacred geometry principles as models for proportional relationship analysis in complex systems",
+            
+            # Metapatterns & Integration Frameworks
+            "recurring patterns of centralization/decentralization cycles across technological and social systems",
+            "common collapse mechanisms in ancient civilizations and modern complex technical infrastructures",
+            "crisis-driven innovation patterns observed across historical and technological domains",
+            "information preservation techniques across civilizational collapse boundaries",
+            "power law distributions appearing in both natural disasters and digital security incidents",
+            
+            # Anomalistics & Boundary Knowledge
+            "systematic evaluation frameworks for anomalous evidence that challenges paradigmatic assumptions",
+            "historical patterns of rejected knowledge later validated by mainstream science",
+            "cross-cultural consistency in reported anomalous phenomena as indicators of underlying patterns",
+            "information filtering systems that balance skepticism with openness to paradigm-challenging data",
+            "methodological frameworks for evaluating evidence beyond current scientific instrumentation"
+            ]
     }
     
     def __init__(self, config_path=None):
@@ -359,20 +438,22 @@ def expand_query_for_patterns(self, query: str) -> List[str]:
     
     @lru_cache(maxsize=100)
     
-    def query_llm(self, prompt_text: str) -> str:
+    def query_llm(self, prompt_text: str, model: str = None) -> str:
         """
         Query the language model.
         
         Args:
             prompt_text (str): Prompt to send to LLM
+            model (str): Model to use, defaults to self.model
             
         Returns:
             str: Response from LLM
         """
         try:
+            use_model = model if model else self.model
             response = requests.post(
                 f"{self.llm_api_url}/api/generate",
-                json={"model": self.model, "prompt": prompt_text, "stream": False},
+                json={"model": use_model, "prompt": prompt_text, "stream": False},
                 timeout=300
             )
 
@@ -388,7 +469,7 @@ def expand_query_for_patterns(self, query: str) -> List[str]:
             logger.error(f"Error querying LLM: {str(e)}")
             return f"Error: {str(e)}"
     
-    def process_pattern_query(self, query: str, search_mode: str = "pattern", depth: int = 2) -> dict:
+    def process_pattern_query(self, query: str, search_mode: str = "pattern", depth: int = 2, model: str = None) -> dict:
         """
         Process a query to find patterns and connections.
         
@@ -396,12 +477,17 @@ def expand_query_for_patterns(self, query: str) -> List[str]:
             query (str): User query
             search_mode (str): 'pattern' for advanced pattern finding, 'standard' for basic RAG
             depth (int): Search depth
+            model (str): Model to use for LLM queries, defaults to self.model
             
         Returns:
             dict: Results including answer, sources, connections, etc.
         """
         start_time = time.time()
         request_id = f"req-{int(start_time)}"
+        
+        # Use the specified model or fall back to the default
+        use_model = model if model else self.model
+        logger.info(f"[{request_id}] Using model: {use_model}")
         
         # Results container
         results = {
@@ -575,7 +661,7 @@ def expand_query_for_patterns(self, query: str) -> List[str]:
                 logger.info(f"[{request_id}] Requesting pattern analysis from LLM")
                 futures = []
                 pattern_start = time.time()  # Profiling
-                pattern_future = self.executor.submit(self.query_llm, pattern_prompt)
+                results = service.process_pattern_query(query, search_mode, model=requested_model)
                 futures.append(pattern_future)
                 
                 # Wait for pattern analysis to finish
@@ -729,7 +815,7 @@ async def chat_completions(request: Request):
                 query = query.replace("standard search", "").replace("normal search", "").strip()
             
             # Process the pattern query
-            results = service.process_pattern_query(query, search_mode)
+            results = service.process_pattern_query(query, search_mode, model=requested_model)
             
             # Format response for OpenAI compatibility
             response_json = {
