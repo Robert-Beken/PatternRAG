@@ -35,7 +35,7 @@ The following diagram illustrates the high-level architecture:
 
 ```
 ┌───────────────────────────────────────────────────────────┐
-│                Document Processing Pipeline                │
+│                Document Processing Pipeline               │
 ├───────────────┬─────────────────────────┬─────────────────┤
 │               │                         │                 │
 │ Document      │ Document                │ Entity &        │
@@ -80,12 +80,12 @@ The following diagram illustrates the high-level architecture:
 
 ```
 ┌───────────────────────────────────────────────────────────┐
-│                      API Service                           │
+│                      API Service                          │
 └───────────────────────────────────────────────────────────┘
                             │
                             ▼
 ┌───────────────────────────────────────────────────────────┐
-│                    Query Processing                        │
+│                    Query Processing                       │
 ├────────────────┬─────────────────────┬───────────────────┤
 │                │                     │                   │
 │ Entity         │ Query               │ Knowledge Graph   │
@@ -95,7 +95,7 @@ The following diagram illustrates the high-level architecture:
                             │
                             ▼
 ┌───────────────────────────────────────────────────────────┐
-│                    Retrieval Layer                         │
+│                    Retrieval Layer                        │
 ├────────────────┬─────────────────────┬───────────────────┤
 │                │                     │                   │
 │ Vector         │ Pattern-Guided      │ Entity-Based      │
@@ -105,7 +105,7 @@ The following diagram illustrates the high-level architecture:
                             │
                             ▼
 ┌───────────────────────────────────────────────────────────┐
-│                    Pattern Analysis                        │
+│                    Pattern Analysis                       │
 ├────────────────┬─────────────────────┬───────────────────┤
 │                │                     │                   │
 │ LLM Pattern    │ Connection          │ Response          │
